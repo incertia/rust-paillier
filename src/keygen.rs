@@ -21,6 +21,7 @@ impl KeyGeneration<Keypair> for Paillier {
 
 pub trait PrimeSampable {
     fn sample_prime(bitsize: usize) -> Self;
+    fn sample_prime_for_safe_prime(bitsize: usize) -> Self;
     fn sample_safe_prime(bitsize: usize) -> Self;
 }
 
@@ -52,11 +53,53 @@ impl PrimeSampable for BigInt {
         }
     }
 
+    // This function is an exact copy of sample_prime except we add in some
+    // extra divisibility checks for the eventual (q - 1)/2 step so we can avoid
+    // an extra round of Miller-Rabin
+    fn sample_prime_for_safe_prime(bitsize: usize) -> Self {
+        let zero = BigInt::zero();
+        let one = BigInt::one();
+        let two = &one + &one;
+
+        loop {
+            let mut candidate = Self::sample(bitsize);
+            // We flip the LSB to make sure tue candidate is odd.
+            //  BitManipulation::set_bit(&mut candidate, 0, true);
+            BigInt::set_bit(&mut candidate, 0, true);
+
+            // To ensure the appropiate size
+            // we set the MSB of the candidate.
+            BitManipulation::set_bit(&mut candidate, bitsize - 1, true);
+            // If no prime number is found in 500 iterations,
+            // restart the loop (re-seed).
+            // FIXME: Why 500?
+            for _ in 0..500 {
+                let mut check_prime = true;
+                for p in SMALL_PRIMES.iter() {
+                    // sample_safe_prime below calls this to generate q = 2p +
+                    // 1, and then checks for primality of p.
+                    //
+                    // We can reject some q here if the resulting p is not
+                    // prime.
+                    if (&candidate - &one).div_floor(&two) % BigInt::from(*p) == zero {
+                        check_prime = false;
+                        break;
+                    }
+                }
+
+                if check_prime && is_prime(&candidate) {
+                    return candidate;
+                }
+                candidate += &two;
+            }
+        }
+    }
+
     fn sample_safe_prime(bitsize: usize) -> Self {
         // q = 2p + 1;
         let two = BigInt::from(2);
         loop {
-            let q = PrimeSampable::sample_prime(bitsize);
+            let q = PrimeSampable::sample_prime_for_safe_prime(bitsize);
             let p = (&q - BigInt::one()).div_floor(&two);
             if is_prime(&p) {
                 return q;
