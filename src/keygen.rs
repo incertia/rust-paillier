@@ -60,12 +60,16 @@ impl PrimeSampable for BigInt {
         let zero = BigInt::zero();
         let one = BigInt::one();
         let two = &one + &one;
+        let four = &two + &two;
 
         loop {
             let mut candidate = Self::sample(bitsize);
-            // We flip the LSB to make sure tue candidate is odd.
+            // We flip the LSB to make sure the candidate is odd.
             //  BitManipulation::set_bit(&mut candidate, 0, true);
             BigInt::set_bit(&mut candidate, 0, true);
+            // We flip the 2nd LSB to make sure the candidate is 3 mod 4 because
+            // (q - 1) / 2 must also be an odd prime..
+            BigInt::set_bit(&mut candidate, 1, true);
 
             // To ensure the appropiate size
             // we set the MSB of the candidate.
@@ -90,7 +94,8 @@ impl PrimeSampable for BigInt {
                 if check_prime && is_prime(&candidate) {
                     return candidate;
                 }
-                candidate += &two;
+                // increment by 4 to keep the 3 mod 4 condition
+                candidate += &four;
             }
         }
     }
