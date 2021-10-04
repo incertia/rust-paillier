@@ -21,7 +21,6 @@ impl KeyGeneration<Keypair> for Paillier {
 
 pub trait PrimeSampable {
     fn sample_prime(bitsize: usize) -> Self;
-    fn sample_prime_for_safe_prime(bitsize: usize) -> Self;
     fn sample_safe_prime(bitsize: usize) -> Self;
 }
 
@@ -53,94 +52,75 @@ impl PrimeSampable for BigInt {
         }
     }
 
-    // This function is an exact copy of sample_prime except we add in some
-    // extra divisibility checks for the eventual (q - 1)/2 step so we can avoid
-    // an extra round of Miller-Rabin
-    fn sample_prime_for_safe_prime(bitsize: usize) -> Self {
-        let zero = BigInt::zero();
-        let one = BigInt::one();
-        let two = &one + &one;
+    fn sample_safe_prime(bitsize: usize) -> Self {
+        let two = BigInt::from(2);
         let four = &two + &two;
-
         loop {
-            let mut candidate = Self::sample(bitsize);
+            // q = 2p + 1;
+            // We want to ensure p,q are both prime.
+            let mut q = Self::sample(bitsize);
+
             // We flip the LSB to make sure the candidate is odd.
             //  BitManipulation::set_bit(&mut candidate, 0, true);
-            BigInt::set_bit(&mut candidate, 0, true);
+            BigInt::set_bit(&mut q, 0, true);
+
             // We flip the 2nd LSB to make sure the candidate is 3 mod 4 because
             // (q - 1) / 2 must also be an odd prime..
-            BigInt::set_bit(&mut candidate, 1, true);
+            BigInt::set_bit(&mut q, 1, true);
 
             // To ensure the appropiate size
             // we set the MSB of the candidate.
-            BitManipulation::set_bit(&mut candidate, bitsize - 1, true);
-            // If no prime number is found in 500 iterations,
-            // restart the loop (re-seed).
-            // FIXME: Why 500?
+            BitManipulation::set_bit(&mut q, bitsize - 1, true);
+
+            let mut p = (&q - BigInt::one()).div_floor(&two);
             for _ in 0..500 {
-                let mut check_prime = true;
-                for p in SMALL_PRIMES.iter() {
-                    // sample_safe_prime below calls this to generate q = 2p +
-                    // 1, and then checks for primality of p.
-                    //
-                    // We can reject some q here if the resulting p is not
-                    // prime.
-                    if (&candidate - &one).div_floor(&two) % BigInt::from(*p) == zero {
-                        check_prime = false;
-                        break;
-                    }
-                }
-
-                if check_prime && is_prime(&candidate) {
-                    return candidate;
-                }
-                // increment by 4 to keep the 3 mod 4 condition
-                candidate += &four;
+                if are_all_primes(&[&p, &q]) {
+                    return q;
+                };
+                p += &two;
+                q += &four;
             }
-        }
-    }
-
-    fn sample_safe_prime(bitsize: usize) -> Self {
-        // q = 2p + 1;
-        let two = BigInt::from(2);
-        loop {
-            let q = PrimeSampable::sample_prime_for_safe_prime(bitsize);
-            let p = (&q - BigInt::one()).div_floor(&two);
-            if is_prime(&p) {
-                return q;
-            };
         }
     }
 }
 
-// Runs the following three tests on a given `candidate` to determine
+// Runs the following three tests on each given `candidate` to determine
 // primality:
 //
 // 1. Divide the candidate by the first 999 small prime numbers.
 // 2. Run Fermat's Little Theorem against the candidate.
 // 3. Run five rounds of the Miller-Rabin test on the candidate.
-pub fn is_prime(candidate: &BigInt) -> bool {
+pub fn are_all_primes(candidates: &[&BigInt]) -> bool {
     // First, simple trial divide
-    for p in SMALL_PRIMES.iter() {
-        let prime = BigInt::from(*p);
-        let r = candidate % &prime;
-        if !NumberTests::is_zero(&r) {
-            continue;
-        } else {
-            return false;
+    for &candidate in candidates {
+        for &p in SMALL_PRIMES.iter() {
+            let prime = BigInt::from(p);
+            let r = candidate % &prime;
+            if !NumberTests::is_zero(&r) {
+                continue;
+            } else {
+                return false;
+            }
         }
     }
     // Second, do a little Fermat test on the candidate
-    if !fermat(candidate) {
-        return false;
+    for &candidate in candidates {
+        if !fermat(candidate) {
+            return false;
+        }
     }
 
     // Finally, do a Miller-Rabin test
     // NIST recommendation is 5 rounds for 512 and 1024 bits. For 1536 bits, the recommendation is 4 rounds.
-    if !miller_rabin(candidate, 5) {
-        return false;
+    for &candidate in candidates {
+        if !miller_rabin(candidate, 5) {
+            return false;
+        }
     }
     true
+}
+pub fn is_prime(candidate: &BigInt) -> bool {
+    are_all_primes(&[candidate])
 }
 
 /// Perform test based on Fermat's little theorem
