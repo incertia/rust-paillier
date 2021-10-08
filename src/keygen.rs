@@ -65,7 +65,7 @@ impl PrimeSampable for BigInt {
             BigInt::set_bit(&mut q, 0, true);
 
             // We flip the 2nd LSB to make sure the candidate is 3 mod 4 because
-            // (q - 1) / 2 must also be an odd prime..
+            // (q - 1) / 2 must also be an odd prime.
             BigInt::set_bit(&mut q, 1, true);
 
             // To ensure the appropiate size
