@@ -54,23 +54,22 @@ impl PrimeSampable for BigInt {
 
     fn sample_safe_prime(bitsize: usize) -> Self {
         let two = BigInt::from(2);
-        let four = &two + &two;
+        let four = BigInt::from(4);
         loop {
             // q = 2p + 1;
             // We want to ensure p,q are both prime.
             let mut q = Self::sample(bitsize);
 
             // We flip the LSB to make sure the candidate is odd.
-            //  BitManipulation::set_bit(&mut candidate, 0, true);
-            BigInt::set_bit(&mut q, 0, true);
+            q.set_bit(0, true);
 
             // We flip the 2nd LSB to make sure the candidate is 3 mod 4 because
             // (q - 1) / 2 must also be an odd prime.
-            BigInt::set_bit(&mut q, 1, true);
+            q.set_bit(1, true);
 
             // To ensure the appropiate size
             // we set the MSB of the candidate.
-            BitManipulation::set_bit(&mut q, bitsize - 1, true);
+            q.set_bit(bitsize - 1, true);
 
             let mut p = (&q - BigInt::one()).div_floor(&two);
             for _ in 0..500 {
